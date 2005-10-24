@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <gmp.h>
 #include <time.h>
+#include <assert.h>
 
 #include "hilbert.h"
 #include "sort.h"
@@ -83,13 +84,17 @@ int main(int argc, char** argv)
     /* create a new context */
     context = fp_create_context(dimz, dimf, order);
     /* allocate memory for the records */
-    records = malloc(n * context->sizeof_record);
+    records = malloc((size_t)n * context->sizeof_record);
+    printf("Allocate Memory: %d = %dM\n", 
+        (size_t)n * context->sizeof_record,
+        (size_t)n * context->sizeof_record / 1024 / 1024);
 #else
     /* create the new context */
     context = mp_create_context(dimz, dimf);
     /* allocate memory for the records */
     records = malloc(n * context->sizeof_record);
 #endif
+    assert(records != NULL);
 
     for(i = 0; i < n; i++)
     {

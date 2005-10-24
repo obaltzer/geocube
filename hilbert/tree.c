@@ -343,7 +343,7 @@ size_t fp_im_query_tree(struct fp_context* context,
     {
         /* if the entire node is contained in the range, report all the
          * node's leaves */
-        printf("Report node!\n");
+        printf("Report node with %d leaves.!\n", root->n_leaves);
         callback(context, root->n_leaves, root->leaves);
         n_leaves = root->n_leaves;
     }

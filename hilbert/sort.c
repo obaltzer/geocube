@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <math.h>
 
 void print_record(struct fp_context* context, const void* r, int k)
 {
@@ -34,6 +35,135 @@ void print_record(struct fp_context* context, const void* r, int k)
     }
     printf(")");
 }
+int fp_compute_order(const struct fp_context* context, 
+                     const void* r1, const void* r2)
+{
+    fpf_t sum = 0.0;
+    int i;
+    fpz_t intervals;
+    fpz_t tmp;
+    int o;
+    
+    fpf_t* r1f = (fpf_t*)(r1 + context->offset_coordsf);
+    fpf_t* r2f = (fpf_t*)(r2 + context->offset_coordsf);
+    fpf_t diff;
+    fpf_t dist;
+    
+    /* compute the eucledian distance between the continiuous parts of the
+     * points */
+    for(i = 0; i < context->env->dimf; i++)
+    {
+        diff = r1f[i] - r2f[i];
+        sum += diff * diff;
+    }
+    dist = sqrt(sum);
+#ifdef WITH_PRINT
+    printf("Distance: %f\n" , dist);
+#endif
+    /* compute number of intervals each having a diagonal of at most dist 
+     * length */
+    tmp = intervals = 
+        (fpz_t)ceil(1.0 / sqrt(dist * dist / context->env->dimf)) ;
+    
+    /* compute the order that generates the smaller power of 2
+     * intervals */
+    o = 0;
+    while(intervals >> o)
+        o++;
+    
+    /* if intervals is still large we have to increment the power by on */
+    if(intervals > ((fpz_t)1 << o))
+        o++;
+    /* the order should now generate a grid that is smaller then the
+     * distance bewteen the two points */
+    /* assert(1.0 / (fpf_t)((fpz_t)1 << o) < dist); */
+#ifdef WITH_PRINT
+    printf("Order: %d\n", o);
+#endif
+    return o;
+}
+
+int fp_find_order_constant(const struct fp_context* context, 
+                           const void* r1, const void* r2,
+                           int order)
+{
+    fpz_t* index1 = (fpz_t*)(r1 + sizeof(int));
+    fpz_t* index2 = (fpz_t*)(r2 + sizeof(int));
+    int new_order = order;
+    
+    /* If the order is uninitialized compute the Hilbert indices of the
+     * records at the minimum order. */
+    if(order == -1)
+    {
+        new_order = fp_compute_order(context, r1, r2);
+        /* if the new order is smaller than the minimum order, use the
+         * minimum order, which should also guarantee that the two points
+         * are not sharing the same cell */
+        if(new_order < context->start_order)
+            new_order = context->start_order;
+        fpm_c2i(context->env, new_order, 
+                (fpz_t*)(r1 + context->offset_coordsz),
+                (fpf_t*)(r1 + context->offset_coordsf),
+                index1);
+        fpm_c2i(context->env, new_order, 
+                (fpz_t*)(r2 + context->offset_coordsz),
+                (fpf_t*)(r2 + context->offset_coordsf),
+                index2);
+    }
+    /* If we share the same order as well as the same indices, try to
+     * compute the order via Eucledian distance. This assumes that the
+     * discrete space coordinates are equal, which they have to be
+     * otherwise the records would not share the same index. */
+    else if(*index1 == *index2)
+    {
+        new_order = fp_compute_order(context, r1, r2);
+        if(new_order > order)
+        {
+            /* make sure we do not exceed the maximum order */
+            assert(new_order <= context->order_limit);
+            fpm_c2i(context->env, new_order, 
+                    (fpz_t*)(r1 + context->offset_coordsz),
+                    (fpf_t*)(r1 + context->offset_coordsf),
+                    index1);
+            fpm_c2i(context->env, new_order, 
+                    (fpz_t*)(r2 + context->offset_coordsz),
+                    (fpf_t*)(r2 + context->offset_coordsf),
+                    index2);
+        }
+        else
+            new_order = order;
+    }
+    return new_order;
+}
+
+int fp_find_order_iterative(const struct fp_context* context, 
+                            const void* r1, const void* r2,
+                            int order)
+{
+    fpz_t* index1 = (fpz_t*)(r1 + sizeof(int));
+    fpz_t* index2 = (fpz_t*)(r2 + sizeof(int));
+   
+    /* now that we know the both orders are the same we can compare both
+     * records indices, if the order is -1 the indices are uninitialized
+     * and we have to recompute in any case */
+    while(order == -1 
+        || (*index1 == *index2 && order <= context->order_limit))
+    {
+        if(order == -1)
+            order = context->start_order;
+        else
+            order++;
+        fpm_c2i(context->env, order, 
+                (fpz_t*)(r1 + context->offset_coordsz),
+                (fpf_t*)(r1 + context->offset_coordsf),
+                index1);
+        fpm_c2i(context->env, order, 
+                (fpz_t*)(r2 + context->offset_coordsz),
+                (fpf_t*)(r2 + context->offset_coordsf),
+                index2);
+    }
+    return order;
+}
 
 int fp_compare(const void* c, const void* r1, const void* r2)
 {
@@ -44,6 +174,7 @@ int fp_compare(const void* c, const void* r1, const void* r2)
     int* order1;
     int* order2;
     int order;
+    int new_order;
     int done = 0;
 
     /* return equality of both pointers point to the same record */
@@ -107,26 +238,10 @@ int fp_compare(const void* c, const void* r1, const void* r2)
     }
     else
         order = *order1 = *order2;
-    
-    /* now that we know the both orders are the same we can compare both
-     * records indices, if the order is -1 the indices are uninitialized
-     * and we have to recompute in any case */
-    while(order == -1 
-        || (*index1 == *index2 && order <= context->order_limit))
-    {
-        if(order == -1)
-            order = context->start_order;
-        else
-            order++;
-        fpm_c2i(context->env, order, 
-                (fpz_t*)(r1 + context->offset_coordsz),
-                (fpf_t*)(r1 + context->offset_coordsf),
-                index1);
-        fpm_c2i(context->env, order, 
-                (fpz_t*)(r2 + context->offset_coordsz),
-                (fpf_t*)(r2 + context->offset_coordsf),
-                index2);
-    }
+
+    if(order == -1 || *index1 == *index2)
+        order = fp_find_order_iterative(context, r1, r2, order);
+        
     /* the order limit is the bit length of index datatype divided by the
      * number of dimensions */
     if(order > context->order_limit)

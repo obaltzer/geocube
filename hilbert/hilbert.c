@@ -178,8 +178,14 @@ void fpm_c2i(struct fpm_env* env, int k, fpz_t coordsz[], fpf_t coordsf[],
             env->coords[i] = coordsz[i] << (k - env->base_order);
             
         for(i = 0; i < env->dimf; i++)
-            /* convert continuous into discrate space */
-            env->coords[i + env->dimz] = (fpz_t)(coordsf[i] * (fpf_t)bits);
+        {
+            /* convert continuous into discrete space, while handling
+             * closed intervals gracefully */
+            env->coords[i + env->dimz] = 
+                (fpz_t)(coordsf[i] * (fpf_t)bits) == bits 
+                    ? bits - 1
+                    : (fpz_t)(coordsf[i] * (fpf_t)bits);
+        }
         
         fpz_c2i(env->envz, k, env->coords, index);
     }

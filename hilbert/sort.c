@@ -38,10 +38,9 @@ void print_record(struct fp_context* context, const void* r, int k)
 int fp_compute_order(const struct fp_context* context, 
                      const void* r1, const void* r2)
 {
-    fpf_t sum = 0.0;
+    fpf_t dist2 = 0.0;
     int i;
     fpz_t intervals;
-    fpz_t tmp;
     int o;
     
     fpf_t* r1f = (fpf_t*)(r1 + context->offset_coordsf);
@@ -54,33 +53,31 @@ int fp_compute_order(const struct fp_context* context,
     for(i = 0; i < context->env->dimf; i++)
     {
         diff = r1f[i] - r2f[i];
-        sum += diff * diff;
+        dist2 += diff * diff;
     }
-    dist = sqrt(sum);
-#ifdef WITH_PRINT
-    printf("Distance: %f\n" , dist);
-#endif
-    /* compute number of intervals each having a diagonal of at most dist 
-     * length */
-    tmp = intervals = 
-        (fpz_t)ceil(1.0 / sqrt(dist * dist / context->env->dimf)) ;
     
-    /* compute the order that generates the smaller power of 2
-     * intervals */
-    o = 0;
+    /* compute squared number of intervals each having a diagonal of at 
+     * most sqrt(dist2) length */
+    intervals = 
+        (fpz_t)ceil(1.0 / (dist2 / context->env->dimf)) ;
+    
+    /* compute the double or the order that generates the smaller power of
+     * 2 intervals */
+    o = 1;
     while(intervals >> o)
         o++;
-    
-    /* if intervals is still large we have to increment the power by on */
-    if(intervals > ((fpz_t)1 << o))
+   
+    /* adjust the order to be a multiple of 2 */
+    if(o % 2 == 1)
         o++;
+    
     /* the order should now generate a grid that is smaller then the
      * distance bewteen the two points */
     /* assert(1.0 / (fpf_t)((fpz_t)1 << o) < dist); */
 #ifdef WITH_PRINT
-    printf("Order: %d\n", o);
+    printf("Order: %d\n", (o >> 1));
 #endif
-    return o;
+    return (o >> 1);
 }
 
 int fp_find_order_constant(const struct fp_context* context, 
@@ -240,7 +237,17 @@ int fp_compare(const void* c, const void* r1, const void* r2)
         order = *order1 = *order2;
 
     if(order == -1 || *index1 == *index2)
-        order = fp_find_order_iterative(context, r1, r2, order);
+        order = context->find_order(context, r1, r2, order);
+    
+    if(*index1 == *index2)
+    {
+        printf("Identical indices:\n");
+        print_record(context, r1, order);
+        printf("\n");
+        print_record(context, r2, order);
+        printf("\n");
+    }
+    assert(*index1 != *index2);
         
     /* the order limit is the bit length of index datatype divided by the
      * number of dimensions */
@@ -260,7 +267,6 @@ int fp_compare(const void* c, const void* r1, const void* r2)
         
     *order1 = *order2 = order;
 
-    assert(*index1 != *index2);
     if(*index1 < *index2)
         return -1;
     else if(*index1 > *index2)

@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <gmp.h>
+#include <sys/time.h>
+#include <time.h>
 
 #include "hilbert.h"
 #include "sort.h"
@@ -20,6 +22,9 @@ int main(int argc, char** argv)
     float coordf;
     void* record_base;
     void* results = NULL;
+    struct timeval start_time;
+    struct timeval end_time;
+    double runtime;
 #ifdef WITH_FP
     void* records = NULL;
     fpz_t index;
@@ -99,7 +104,9 @@ int main(int argc, char** argv)
         /* *((fpz_t*)(record_base + sizeof(int))) = -1; */
 #else
 #endif
+#ifdef WITH_PRINT
         printf("(");
+#endif
         for(j = 0; j < dimz; j++)
         {
             fscanf(f, "%d", &coordz);
@@ -113,10 +120,12 @@ int main(int argc, char** argv)
                 coordz
             );
 #endif
+#ifdef WITH_PRINT
             if(j)
                 printf(", %d", coordz);
             else
                 printf("%d", coordz);
+#endif
         }
         
         for(j = 0; j < dimf; j++)
@@ -132,18 +141,33 @@ int main(int argc, char** argv)
                 coordz
             );
 #endif
+#ifdef WITH_PRINT
             if((dimz + j))
                 printf(", %f", coordf);
             else
                 printf("%f", coordf);
+#endif
         }
+#ifdef WITH_PRINT
         printf(")\n");
+#endif
     }
 #ifdef WITH_FP
+    printf("Start sorting...\n");
+    gettimeofday(&start_time, NULL);
+    context->find_order = fp_find_order_constant;
     fp_im_sort(context, records, n, &results);
+    gettimeofday(&end_time, NULL);
+    runtime = ((double)end_time.tv_sec 
+                    + ((double)end_time.tv_usec / 1000000.0)) 
+                - ((double)start_time.tv_sec 
+                    + ((double)start_time.tv_usec / 1000000.0));
+    printf("Runtime: %f seconds\n", runtime);
     if(records == results)
         printf("Done!\n");
-    
+    printf("Max order is: %u\n", context->max_order);
+    printf("Calls to index mapping: %llu\n", context->env->calls);
+   
     /* write output file header */
     if(of)
     {
@@ -154,20 +178,23 @@ int main(int argc, char** argv)
         fprintf(of, "%d\n", dimf);
         fprintf(of, "%d\n", n);
     }
-    
     for(i = 0; i < n; i++)
     {
         fpz_t index;
         
         record_base = records + (i * context->sizeof_record);
+#ifdef WITH_PRINT    
         printf("(");
+#endif
         for(j = 0; j < dimz; j++)
         {
             coordz = ((fpz_t*)(record_base + context->offset_coordsz))[j];
+#ifdef WITH_PRINT    
             if(j)
                 printf(", %d", coordz);
             else
                 printf("%d", coordz);
+#endif
 
             if(of)
                 fprintf(of, "%d ", coordz);
@@ -176,10 +203,12 @@ int main(int argc, char** argv)
         for(j = 0; j < dimf; j++)
         {
             coordf = ((fpf_t*)(record_base + context->offset_coordsf))[j];
+#ifdef WITH_PRINT    
             if((dimz + j))
                 printf(", %f", coordf);
             else
                 printf("%f", coordf);
+#endif
             
             if(of)
                 fprintf(of, "%f ", coordf);
@@ -187,7 +216,9 @@ int main(int argc, char** argv)
         fpm_c2i(context->env, context->max_order, 
                 (fpz_t*)(record_base + context->offset_coordsz),  
                 (fpf_t*)(record_base + context->offset_coordsf), &index);
+#ifdef WITH_PRINT    
         printf("): %llu\n", index);
+#endif
         if(last_index > index)
         {
             printf("Failure!\n");
@@ -197,7 +228,6 @@ int main(int argc, char** argv)
         if(of)
             fprintf(of, "\n");
     }
-    printf("Max order is: %u\n", context->max_order);
 #endif
 
 #ifdef WITH_FP

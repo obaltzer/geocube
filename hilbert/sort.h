@@ -26,6 +26,9 @@ struct fp_context
     int max_order;
     int order_limit;
 
+    int (*find_order)(const struct fp_context*,
+                      const void*, const void*, int);
+
     /* profiling code */
     unsigned long long int build_tree_calls;
     unsigned int n_tree_nodes;
@@ -36,5 +39,11 @@ void fp_destroy_context(struct fp_context* context);
 void fp_im_sort(struct fp_context* context, void* input, size_t n, 
                 void** output);
 void print_record(struct fp_context* context, const void* r, int k);
+int fp_find_order_iterative(const struct fp_context* context, 
+                            const void* r1, const void* r2,
+                            int order);
+int fp_find_order_constant(const struct fp_context* context, 
+                           const void* r1, const void* r2,
+                           int order);
 
 #endif

@@ -13,10 +13,10 @@ void fp_print_bbox(struct fp_context* context, struct fp_im_tnode* node)
     size_t i;
     /* compute the bbox array addresses */
     void* bbox_base = ((void*)node) + sizeof(struct fp_im_tnode);
-    fpz_t* minz = (fpz_t*)(bbox_base + context->minz);
-    fpf_t* minf = (fpf_t*)(bbox_base + context->minf);
-    fpz_t* maxz = (fpz_t*)(bbox_base + context->maxz);
-    fpf_t* maxf = (fpf_t*)(bbox_base + context->maxf);
+    fpz_t* minz = (fpz_t*)(bbox_base + context->minz_off);
+    fpf_t* minf = (fpf_t*)(bbox_base + context->minf_off);
+    fpz_t* maxz = (fpz_t*)(bbox_base + context->maxz_off);
+    fpf_t* maxf = (fpf_t*)(bbox_base + context->maxf_off);
      
     printf("Min: (");
     for(i = 0; i < context->env->dimz; i++)
@@ -48,10 +48,10 @@ void fp_set_bbox(struct fp_context* context, struct fp_im_tnode* node)
     size_t i, j;
     /* compute the bbox array addresses */
     void* bbox_base = ((void*)node) + sizeof(struct fp_im_tnode);
-    fpz_t* minz = (fpz_t*)(bbox_base + context->minz);
-    fpf_t* minf = (fpf_t*)(bbox_base + context->minf);
-    fpz_t* maxz = (fpz_t*)(bbox_base + context->maxz);
-    fpf_t* maxf = (fpf_t*)(bbox_base + context->maxf);
+    fpz_t* minz = (fpz_t*)(bbox_base + context->minz_off);
+    fpf_t* minf = (fpf_t*)(bbox_base + context->minf_off);
+    fpz_t* maxz = (fpz_t*)(bbox_base + context->maxz_off);
+    fpf_t* maxf = (fpf_t*)(bbox_base + context->maxf_off);
     
     if(node->type == LEAF)
     {   
@@ -63,20 +63,20 @@ void fp_set_bbox(struct fp_context* context, struct fp_im_tnode* node)
         for(i = 0; i < node->n_children; i++)
         {
             /* iterate through all records underneath the current node */
-            record = node->children + (context->sizeof_record * i);
+            record = node->children + (context->record_size * i);
 
             if(i == 0)
             {
                 /* the first record is initialization so just copy */
-                memcpy(minz, record + context->offset_coordsz,
-                       context->sizeof_record - context->offset_coordsz);
-                memcpy(maxz, record + context->offset_coordsz, 
-                       context->sizeof_record - context->offset_coordsz);
+                memcpy(minz, record + context->coordsz_off,
+                       context->record_size - context->coordsz_off);
+                memcpy(maxz, record + context->coordsz_off, 
+                       context->record_size - context->coordsz_off);
             }
             else
             {
-                coordsz = (fpz_t*)(record + context->offset_coordsz);
-                coordsf = (fpf_t*)(record + context->offset_coordsf);
+                coordsz = (fpz_t*)(record + context->coordsz_off);
+                coordsf = (fpf_t*)(record + context->coordsf_off);
                 /* all other records compare with current bbox */
                 for(j = 0; j < context->env->dimz; j++)
                 {
@@ -111,10 +111,10 @@ void fp_set_bbox(struct fp_context* context, struct fp_im_tnode* node)
         {
             c_bbox = node->children + (node_size * i) 
                         + sizeof(struct fp_im_tnode);
-            c_minz = (fpz_t*)(c_bbox + context->minz);
-            c_minf = (fpf_t*)(c_bbox + context->minf);
-            c_maxz = (fpz_t*)(c_bbox + context->maxz);
-            c_maxf = (fpf_t*)(c_bbox + context->maxf);
+            c_minz = (fpz_t*)(c_bbox + context->minz_off);
+            c_minf = (fpf_t*)(c_bbox + context->minf_off);
+            c_maxz = (fpz_t*)(c_bbox + context->maxz_off);
+            c_maxf = (fpf_t*)(c_bbox + context->maxf_off);
             
             if(i == 0)
                 /* the first child is only for initialization, just copy */
@@ -186,7 +186,7 @@ struct fp_im_tnode* fp_im_build_tree(struct fp_context* context,
         if(type == LEAF)
         {
             node->children = input + (i * context->fanout) 
-                                            * context->sizeof_record;
+                                            * context->record_size;
             /* compute the number of leaves under the node */
             node->n_leaves = node->n_children;
             node->leaves = node->children;
@@ -272,16 +272,16 @@ int fp_contains_record(struct fp_context* context, void* min, void* max,
 {
     size_t i = 0;
     for(; i < context->env->dimz; i++)
-        if(((fpz_t*)(r + context->offset_coordsz))[i] 
-                < ((fpz_t*)(min + context->offset_coordsz))[i] 
-                || ((fpz_t*)(r + context->offset_coordsz))[i] 
-                    > ((fpz_t*)(max + context->offset_coordsz))[i])
+        if(((fpz_t*)(r + context->coordsz_off))[i] 
+                < ((fpz_t*)(min + context->coordsz_off))[i] 
+                || ((fpz_t*)(r + context->coordsz_off))[i] 
+                    > ((fpz_t*)(max + context->coordsz_off))[i])
             return 0;
     for(i = 0; i < context->env->dimf; i++)
-        if(((fpf_t*)(r + context->offset_coordsf))[i] 
-                < ((fpf_t*)(min + context->offset_coordsf))[i] 
-                || ((fpf_t*)(r + context->offset_coordsf))[i] 
-                    > ((fpf_t*)(max + context->offset_coordsf))[i])
+        if(((fpf_t*)(r + context->coordsf_off))[i] 
+                < ((fpf_t*)(min + context->coordsf_off))[i] 
+                || ((fpf_t*)(r + context->coordsf_off))[i] 
+                    > ((fpf_t*)(max + context->coordsf_off))[i])
             return 0;
     return 1;
 }
@@ -303,18 +303,18 @@ int fp_contains_node(struct fp_context* context, void* min, void* max,
     size_t i;
     /* compute the bbox array addresses */
     void* bbox_base = ((void*)node) + sizeof(struct fp_im_tnode);
-    fpz_t* minz = (fpz_t*)(bbox_base + context->minz);
-    fpf_t* minf = (fpf_t*)(bbox_base + context->minf);
-    fpz_t* maxz = (fpz_t*)(bbox_base + context->maxz);
-    fpf_t* maxf = (fpf_t*)(bbox_base + context->maxf);
+    fpz_t* minz = (fpz_t*)(bbox_base + context->minz_off);
+    fpf_t* minf = (fpf_t*)(bbox_base + context->minf_off);
+    fpz_t* maxz = (fpz_t*)(bbox_base + context->maxz_off);
+    fpf_t* maxf = (fpf_t*)(bbox_base + context->maxf_off);
 
     for(i = 0; i < context->env->dimz; i++)
-        if(minz[i] < ((fpz_t*)(min + context->offset_coordsz))[i]
-                || maxz[i] > ((fpz_t*)(max + context->offset_coordsz))[i])
+        if(minz[i] < ((fpz_t*)(min + context->coordsz_off))[i]
+                || maxz[i] > ((fpz_t*)(max + context->coordsz_off))[i])
             return 0;
     for(i = 0; i < context->env->dimf; i++)
-        if(minf[i] < ((fpf_t*)(min + context->offset_coordsf))[i]
-                || maxf[i] > ((fpf_t*)(max + context->offset_coordsf))[i])
+        if(minf[i] < ((fpf_t*)(min + context->coordsf_off))[i]
+                || maxf[i] > ((fpf_t*)(max + context->coordsf_off))[i])
             return 0;
     return 1;
 }
@@ -368,7 +368,7 @@ size_t fp_im_query_tree(struct fp_context* context,
              * collect information from here */
             for(; i < root->n_children; i++)
             {
-                record = root->children + (i * context->sizeof_record);
+                record = root->children + (i * context->record_size);
                 assert(record != NULL);
                 if(fp_contains_record(context, min, max, record))
                 {

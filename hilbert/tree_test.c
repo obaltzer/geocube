@@ -7,13 +7,14 @@
 #include "hilbert.h"
 #include "sort.h"
 #include "tree.h"
+#include "util.h"
 
 void report(struct fp_context* c, size_t n, void* r)
 {
     size_t i = 0;
     for(; i < n; i++)
     {
-        print_record(c, (r + (i * c->sizeof_record)), 0);
+        print_record(stdout, c, (r + (i * c->record_size)));
         printf("\n");
     }
 }
@@ -84,21 +85,21 @@ int main(int argc, char** argv)
     /* create a new context */
     context = fp_create_context(dimz, dimf, order);
     /* allocate memory for the records */
-    records = malloc((size_t)n * context->sizeof_record);
+    records = malloc((size_t)n * context->record_size);
     printf("Allocate Memory: %d = %dM\n", 
-        (size_t)n * context->sizeof_record,
-        (size_t)n * context->sizeof_record / 1024 / 1024);
+        (size_t)n * context->record_size,
+        (size_t)n * context->record_size / 1024 / 1024);
 #else
     /* create the new context */
     context = mp_create_context(dimz, dimf);
     /* allocate memory for the records */
-    records = malloc(n * context->sizeof_record);
+    records = malloc(n * context->record_size);
 #endif
     assert(records != NULL);
 
     for(i = 0; i < n; i++)
     {
-        record_base = records + (i * context->sizeof_record);
+        record_base = records + (i * context->record_size);
 #ifdef WITH_FP
         /* set the records order to be uninitialized */
         *(int*)record_base = -1;
@@ -108,12 +109,12 @@ int main(int argc, char** argv)
         {
             fscanf(f, "%d", &coordz);
 #ifdef WITH_FP
-            ((fpz_t*)(record_base + context->offset_coordsz))[j]
+            ((fpz_t*)(record_base + context->coordsz_off))[j]
                 = coordz;
 #else
-            mpz_init(((mpz_t*)(record_base + context->offset_coordsz))[j]);
+            mpz_init(((mpz_t*)(record_base + context->coordsz_off))[j]);
             mpz_set_ui(
-                ((mpz_t*)(record_base + context->offset_coordsz))[j],
+                ((mpz_t*)(record_base + context->coordsz_off))[j],
                 coordz
             );
 #endif
@@ -123,12 +124,12 @@ int main(int argc, char** argv)
         {
             fscanf(f, "%f", &coordf);
 #ifdef WITH_FP
-            ((fpf_t*)(record_base + context->offset_coordsf))[j] 
+            ((fpf_t*)(record_base + context->coordsf_off))[j] 
                 = coordf;
 #else
-            mpf_init(((mpf_t*)(record_base + context->offset_coordsf))[j]);
+            mpf_init(((mpf_t*)(record_base + context->coordsf_off))[j]);
             mpf_set_d(
-                ((mpf_t*)(record_base + context->offset_coordsf))[j],
+                ((mpf_t*)(record_base + context->coordsf_off))[j],
                 coordz
             );
 #endif
@@ -139,7 +140,6 @@ int main(int argc, char** argv)
     fp_im_sort(context, records, n, &results);
     if(records == results)
     {
-        fpz_t maxi = 0;
         printf("Done!\n");
 #if 0
         /* print out sorted records */
@@ -147,11 +147,11 @@ int main(int argc, char** argv)
         {
             fpz_t index;
             
-            record_base = records + (i * context->sizeof_record);
+            record_base = records + (i * context->record_size);
             printf("(");
             for(j = 0; j < dimz; j++)
             {
-                coordz = ((fpz_t*)(record_base + context->offset_coordsz))[j];
+                coordz = ((fpz_t*)(record_base + context->coordsz_off))[j];
                 if(j)
                     printf(", %d", coordz);
                 else
@@ -160,15 +160,15 @@ int main(int argc, char** argv)
             
             for(j = 0; j < dimf; j++)
             {
-                coordf = ((fpf_t*)(record_base + context->offset_coordsf))[j];
+                coordf = ((fpf_t*)(record_base + context->coordsf_off))[j];
                 if((dimz + j))
                     printf(", %f", coordf);
                 else
                     printf("%f", coordf);
             }
             fpm_c2i(context->env, context->max_order, 
-                    (fpz_t*)(record_base + context->offset_coordsz),  
-                    (fpf_t*)(record_base + context->offset_coordsf), &index);
+                    (fpz_t*)(record_base + context->coordsz_off),  
+                    (fpf_t*)(record_base + context->coordsf_off), &index);
             /* check if the order of indices is correct */
             if(maxi > index)
                 abort();
@@ -190,8 +190,8 @@ int main(int argc, char** argv)
         printf("Calls to index mapping: %llu\n", context->env->calls);
         printf("Calls to build_tree: %llu\n", context->build_tree_calls);
         printf("Number of tree nodes: %d\n", context->n_tree_nodes);
-        qr_min = malloc(context->sizeof_record); 
-        qr_max = malloc(context->sizeof_record);
+        qr_min = malloc(context->record_size); 
+        qr_max = malloc(context->record_size);
         srand(time(NULL));
         for(i = 0; i < context->env->dimz; i++)
         {
@@ -208,13 +208,13 @@ int main(int argc, char** argv)
             
             if(a < b)
             {
-                ((fpz_t*)(qr_min + context->offset_coordsz))[i] = a;
-                ((fpz_t*)(qr_max + context->offset_coordsz))[i] = b;
+                ((fpz_t*)(qr_min + context->coordsz_off))[i] = a;
+                ((fpz_t*)(qr_max + context->coordsz_off))[i] = b;
             }
             else
             {
-                ((fpz_t*)(qr_min + context->offset_coordsz))[i] = b;
-                ((fpz_t*)(qr_max + context->offset_coordsz))[i] = a;
+                ((fpz_t*)(qr_min + context->coordsz_off))[i] = b;
+                ((fpz_t*)(qr_max + context->coordsz_off))[i] = a;
             }
         }
         for(i = 0; i < context->env->dimf; i++)
@@ -232,20 +232,20 @@ int main(int argc, char** argv)
             
             if(a < b)
             {
-                ((fpf_t*)(qr_min + context->offset_coordsf))[i] = a;
-                ((fpf_t*)(qr_max + context->offset_coordsf))[i] = b;
+                ((fpf_t*)(qr_min + context->coordsf_off))[i] = a;
+                ((fpf_t*)(qr_max + context->coordsf_off))[i] = b;
             }
             else
             {
-                ((fpf_t*)(qr_min + context->offset_coordsf))[i] = b;
-                ((fpf_t*)(qr_max + context->offset_coordsf))[i] = a;
+                ((fpf_t*)(qr_min + context->coordsf_off))[i] = b;
+                ((fpf_t*)(qr_max + context->coordsf_off))[i] = a;
             }
         }
         printf("Querying tree...\n");
         printf("Query region min: ");
-        print_record(context, qr_min, 0);
+        print_record(stdout, context, qr_min);
         printf("\nQuery region max: ");
-        print_record(context, qr_max, 0);
+        print_record(stdout, context, qr_max);
         printf("\n");
         i = fp_im_query_tree(context, root, qr_min, qr_max, report);
         printf("Reported %d records\n", i);
@@ -258,11 +258,11 @@ int main(int argc, char** argv)
 #else
     for(i = 0; i < n; i++)
     {
-        record_base = records + (i * context->sizeof_record);
+        record_base = records + (i * context->record_size);
         for(j = 0; j < dimz; j++)
-            mpz_clear(((mpz_t*)(records + context->offset_coordsz))[j]);
+            mpz_clear(((mpz_t*)(records + context->coordsz_off))[j]);
         for(j = 0; j < dimf; j++)
-            mpf_clear(((mpf_t*)(records + context->offset_coordsf))[j]);
+            mpf_clear(((mpf_t*)(records + context->coordsf_off))[j]);
     }
     mp_destroy_context(context);
     mpz_clear(index);

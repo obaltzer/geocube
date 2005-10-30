@@ -1,6 +1,7 @@
 #include "sort.h"
 #include "quicksort.h"
 #include "hilbert.h"
+#include "util.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,33 +9,6 @@
 #include <string.h>
 #include <math.h>
 
-void print_record(struct fp_context* context, const void* r, int k)
-{
-    int i;
-    fpz_t coordz;
-    fpf_t coordf;
-    fpz_t bits = 1;
-    bits = bits << k;
-    
-    printf("(%d, %llu: ", k, bits);
-    for(i = 0; i < context->env->dimz; i++)
-    {
-        coordz = ((fpz_t*)(r + context->offset_coordsz))[i];
-        if(i)
-            printf(", %llu", coordz);
-        else
-            printf("%llu", coordz);
-    }
-    for(i = 0; i < context->env->dimf; i++)
-    {
-        coordf = ((fpf_t*)(r + context->offset_coordsf))[i];
-        if((context->env->dimz + i))
-            printf(", %f:%llu", coordf, (fpz_t)(coordf * (fpf_t)bits));
-        else
-            printf("%f:%llu", coordf, (fpz_t)(coordf * (fpf_t)bits));
-    }
-    printf(")");
-}
 int fp_compute_order(const struct fp_context* context, 
                      const void* r1, const void* r2)
 {
@@ -43,10 +17,9 @@ int fp_compute_order(const struct fp_context* context,
     fpz_t intervals;
     int o;
     
-    fpf_t* r1f = (fpf_t*)(r1 + context->offset_coordsf);
-    fpf_t* r2f = (fpf_t*)(r2 + context->offset_coordsf);
+    fpf_t* r1f = (fpf_t*)(r1 + context->coordsf_off);
+    fpf_t* r2f = (fpf_t*)(r2 + context->coordsf_off);
     fpf_t diff;
-    fpf_t dist;
     
     /* compute the eucledian distance between the continiuous parts of the
      * points */
@@ -99,12 +72,12 @@ int fp_find_order_constant(const struct fp_context* context,
         if(new_order < context->start_order)
             new_order = context->start_order;
         fpm_c2i(context->env, new_order, 
-                (fpz_t*)(r1 + context->offset_coordsz),
-                (fpf_t*)(r1 + context->offset_coordsf),
+                (fpz_t*)(r1 + context->coordsz_off),
+                (fpf_t*)(r1 + context->coordsf_off),
                 index1);
         fpm_c2i(context->env, new_order, 
-                (fpz_t*)(r2 + context->offset_coordsz),
-                (fpf_t*)(r2 + context->offset_coordsf),
+                (fpz_t*)(r2 + context->coordsz_off),
+                (fpf_t*)(r2 + context->coordsf_off),
                 index2);
     }
     /* If we share the same order as well as the same indices, try to
@@ -119,12 +92,12 @@ int fp_find_order_constant(const struct fp_context* context,
             /* make sure we do not exceed the maximum order */
             assert(new_order <= context->order_limit);
             fpm_c2i(context->env, new_order, 
-                    (fpz_t*)(r1 + context->offset_coordsz),
-                    (fpf_t*)(r1 + context->offset_coordsf),
+                    (fpz_t*)(r1 + context->coordsz_off),
+                    (fpf_t*)(r1 + context->coordsf_off),
                     index1);
             fpm_c2i(context->env, new_order, 
-                    (fpz_t*)(r2 + context->offset_coordsz),
-                    (fpf_t*)(r2 + context->offset_coordsf),
+                    (fpz_t*)(r2 + context->coordsz_off),
+                    (fpf_t*)(r2 + context->coordsf_off),
                     index2);
         }
         else
@@ -151,12 +124,12 @@ int fp_find_order_iterative(const struct fp_context* context,
         else
             order++;
         fpm_c2i(context->env, order, 
-                (fpz_t*)(r1 + context->offset_coordsz),
-                (fpf_t*)(r1 + context->offset_coordsf),
+                (fpz_t*)(r1 + context->coordsz_off),
+                (fpf_t*)(r1 + context->coordsf_off),
                 index1);
         fpm_c2i(context->env, order, 
-                (fpz_t*)(r2 + context->offset_coordsz),
-                (fpf_t*)(r2 + context->offset_coordsf),
+                (fpz_t*)(r2 + context->coordsz_off),
+                (fpf_t*)(r2 + context->coordsf_off),
                 index2);
     }
     return order;
@@ -171,7 +144,6 @@ int fp_compare(const void* c, const void* r1, const void* r2)
     int* order1;
     int* order2;
     int order;
-    int new_order;
     int done = 0;
 
     /* return equality of both pointers point to the same record */
@@ -180,12 +152,12 @@ int fp_compare(const void* c, const void* r1, const void* r2)
 
     /* check if the two records have equal values */
     for(i = 0; !done && i < context->env->dimz; i++)
-        if(((fpz_t*)(r1 + context->offset_coordsz))[i] 
-                != ((fpz_t*)(r2 + context->offset_coordsz))[i])
+        if(((fpz_t*)(r1 + context->coordsz_off))[i] 
+                != ((fpz_t*)(r2 + context->coordsz_off))[i])
             done = 1;
     for(i = 0; !done && i < context->env->dimf; i++)
-        if(((fpf_t*)(r1 + context->offset_coordsf))[i] 
-                != ((fpf_t*)(r2 + context->offset_coordsf))[i])
+        if(((fpf_t*)(r1 + context->coordsf_off))[i] 
+                != ((fpf_t*)(r2 + context->coordsf_off))[i])
             done = 1;
     
     if(!done)
@@ -215,8 +187,8 @@ int fp_compare(const void* c, const void* r1, const void* r2)
          * index2 cannot be uninitialized, otherwise order2 would not be
          * larger then order1. */
         fpm_c2i(context->env, *order2, 
-                (fpz_t*)(r1 + context->offset_coordsz), 
-                (fpf_t*)(r1 + context->offset_coordsf), 
+                (fpz_t*)(r1 + context->coordsz_off), 
+                (fpf_t*)(r1 + context->coordsf_off), 
                 index1);
         order = *order1 = *order2;
     }
@@ -228,8 +200,8 @@ int fp_compare(const void* c, const void* r1, const void* r2)
          * index1 cannot be uninitialized, otherwise order1 would not be
          * larger then order2. */
         fpm_c2i(context->env, *order1, 
-                (fpz_t*)(r2 + context->offset_coordsz),  
-                (fpf_t*)(r2 + context->offset_coordsf), 
+                (fpz_t*)(r2 + context->coordsz_off),  
+                (fpf_t*)(r2 + context->coordsf_off), 
                 index2);
         order = *order2 = *order1;
     }
@@ -242,9 +214,9 @@ int fp_compare(const void* c, const void* r1, const void* r2)
     if(*index1 == *index2)
     {
         printf("Identical indices:\n");
-        print_record(context, r1, order);
+        print_record_mapped(stderr, context, r1, order);
         printf("\n");
-        print_record(context, r2, order);
+        print_record_mapped(stderr, context, r2, order);
         printf("\n");
     }
     assert(*index1 != *index2);
@@ -255,9 +227,9 @@ int fp_compare(const void* c, const void* r1, const void* r2)
     {
         printf("Indices: %llu : %llu\n", *index1, *index2);
         printf("Order limit exceeded for: ");
-        print_record(context, r1, order - 1);
+        print_record_mapped(stderr, context, r1, order - 1);
         printf(" and ");
-        print_record(context, r2, order - 1);
+        print_record_mapped(stderr, context, r2, order - 1);
         printf("\n");
         abort();
     }
@@ -333,7 +305,7 @@ void fp_im_sort(struct fp_context* context, void* input,  size_t n,
 {
     /* output array has to be NULL, because we do everything in place */
     assert(*output == NULL);
-    quicksort(context, input, n, context->sizeof_record, fp_compare);
+    quicksort(context, input, n, context->record_size, fp_compare);
     *output = input;
 }
 
@@ -354,21 +326,22 @@ struct fp_context* fp_create_context(int dimz, int dimf, int base_order)
          * dimz * fpz_t     : discrete space dimensions
          * dimf * fpf_t     : continuous space dimensions
          */
-        c->sizeof_record = sizeof(int) + sizeof(fpz_t) 
+        c->record_size = sizeof(int) + sizeof(fpz_t) 
                             + dimz * sizeof(fpz_t) 
                             + dimf * sizeof(fpf_t);
-        c->offset_coordsz = sizeof(int) + sizeof(fpz_t);
-        c->offset_coordsf = sizeof(int) + sizeof(fpz_t)
+        c->order_off = 0;
+        c->coordsz_off = sizeof(int) + sizeof(fpz_t);
+        c->coordsf_off = sizeof(int) + sizeof(fpz_t)
                             + dimz * sizeof(fpz_t);
         
         /* compute the memory size of a bounding box 
          * consisting of 2 points */
         c->bbox_size = 2 * (dimz * sizeof(fpz_t) + dimf * sizeof(fpf_t));
         /* compute the offsets for each of the points */
-        c->minz = 0;
-        c->minf = dimz * sizeof(fpz_t);
-        c->maxz = dimz * sizeof(fpz_t) + dimf * sizeof(fpf_t);
-        c->maxf = dimz * sizeof(fpz_t) + dimf * sizeof(fpf_t)
+        c->minz_off = 0;
+        c->minf_off = dimz * sizeof(fpz_t);
+        c->maxz_off = dimz * sizeof(fpz_t) + dimf * sizeof(fpf_t);
+        c->maxf_off = dimz * sizeof(fpz_t) + dimf * sizeof(fpf_t)
                             + dimz * sizeof(fpz_t);
         /* TODO: hardcoded fanout of the tree */
         c->fanout = 16;

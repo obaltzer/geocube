@@ -318,7 +318,8 @@ struct fp_context* fp_create_context(int dimz, int dimf, int base_order)
     {
         /* create a new mixed dimensions type */
         c->env = fpm_create_env(dimz, dimf, base_order);
-        
+       
+        c->cards = (size_t*)malloc(dimz * sizeof(size_t));
         /* The format of a record is as follows:
          *
          * int              : order at which the current index was computed
@@ -366,6 +367,7 @@ void fp_destroy_context(struct fp_context* context)
     if(context)
     {
         fpm_destroy_env(context->env);
+        free(context->cards);
         free(context);
     }
 }

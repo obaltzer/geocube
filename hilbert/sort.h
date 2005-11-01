@@ -13,6 +13,7 @@
 struct fp_context
 {
     struct fpm_env* env;
+    size_t* cards;
     size_t record_size;
     size_t order_off;
     size_t coordsz_off;

@@ -97,6 +97,13 @@ void fp_normalize(struct fp_norm_context* context, void* records,
         counter = 0;
         last = NULL;
         quicksort(NULL, &dims[i * n], n, sizeof(fpf_t), fp_compare_fpf);
+    #if 0
+        printf("DimF: %d\n", i);
+        for(j = 0; j < n; j++)
+        {
+            printf("%f\n", dims[i * n + j]);
+        }
+    #endif
         for(j = 0; j < n; j++)
         {
             if(last == NULL || *last != dims[i * n + j])
@@ -126,6 +133,13 @@ void fp_normalize(struct fp_norm_context* context, void* records,
                    block, sizeof(fpf_t) * counter);
         }
         context->map_size[i] = n_blocks * BLOCK_SIZE + counter;
+    #if 0
+        printf("DimF map: %d\n", i);
+        for(j = 0; j < context->map_size[i]; j++)
+        {
+            printf("%d: %f\n", j, context->map[i][j]);
+        }
+    #endif
     }
     /* release temporary memory to compute the mapping */
     free(dims);

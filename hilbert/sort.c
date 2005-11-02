@@ -213,11 +213,11 @@ int fp_compare(const void* c, const void* r1, const void* r2)
     
     if(*index1 == *index2)
     {
-        printf("Identical indices:\n");
+        fprintf(stderr, "Identical indices:\n");
         print_record_mapped(stderr, context, r1, order);
-        printf("\n");
+        fprintf(stderr, "\n");
         print_record_mapped(stderr, context, r2, order);
-        printf("\n");
+        fprintf(stderr, "\n");
     }
     assert(*index1 != *index2);
         
@@ -225,12 +225,12 @@ int fp_compare(const void* c, const void* r1, const void* r2)
      * number of dimensions */
     if(order > context->order_limit)
     {
-        printf("Indices: %llu : %llu\n", *index1, *index2);
-        printf("Order limit exceeded for: ");
+        fprintf(stderr, "Indices: %llu : %llu\n", *index1, *index2);
+        fprintf(stderr, "Order limit exceeded for: ");
         print_record_mapped(stderr, context, r1, order - 1);
-        printf(" and ");
+        fprintf(stderr, " and ");
         print_record_mapped(stderr, context, r2, order - 1);
-        printf("\n");
+        fprintf(stderr, "\n");
         abort();
     }
     /* set the new maximum order of we have one */

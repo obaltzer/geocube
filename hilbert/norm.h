@@ -23,7 +23,8 @@ struct fp_norm_context
     size_t dimz;
 };
 
-struct fp_norm_context* fp_create_norm_context(int dimz, int dimf, 
+struct fp_norm_context* fp_create_norm_context(struct sort_config* config, 
+                                               int dimz, int dimf, 
                                                int base_order);
 void fp_destroy_norm_context(struct fp_norm_context* context);
 void fp_normalize(struct fp_norm_context* context, void* records, 

@@ -83,7 +83,7 @@ int main(int argc, char** argv)
     
 #ifdef WITH_FP    
     /* create a new context */
-    context = fp_create_context(dimz, dimf, order);
+    context = fp_create_context(NULL, dimz, dimf, order);
     /* allocate memory for the records */
     records = malloc((size_t)n * context->record_size);
     printf("Allocate Memory: %d = %dM\n", 

@@ -17,18 +17,6 @@ struct metadata
     size_t n;
 };
     
-struct sort_config
-{
-    int verbose;
-    int normalize;
-    int denormalize;
-    enum { CONSTANT, ITERATIVE } find_order;
-    enum { KEEP, FORGET } index;
-    FILE* infile;
-    FILE* outfile;
-    FILE* print;
-};
-
 void configure(int argc, char** argv, struct sort_config* config)
 {
     /*
@@ -261,7 +249,8 @@ int main(int argc, char** args)
     if(config.normalize)
     {
         void* orig_records;
-        norm = fp_create_norm_context(meta->dimz, meta->dimf, start_order);
+        norm = fp_create_norm_context(&config, meta->dimz, meta->dimf, 
+                                      start_order);
         /* allocate memory for original records and read them */
         orig_records = malloc(meta->n * norm->mc->record_size);
         read_records(&config, meta, norm->mc, orig_records);
@@ -279,7 +268,8 @@ int main(int argc, char** args)
     else
     {
         /* create a new computation context */
-        context = fp_create_context(meta->dimz, meta->dimf, start_order);
+        context = fp_create_context(&config, meta->dimz, meta->dimf, 
+                                    start_order);
         /* allocate memory for the records */
         records = malloc(meta->n * context->record_size);
         read_records(&config, meta, context, records);
@@ -306,6 +296,8 @@ int main(int argc, char** args)
     fprintf(config.print, "Sorting runtime was %f seconds\n",
             (float)get_runtime(sorting_time));
     fprintf(config.print, "Maximum order is: %d\n", context->max_order);
+    fprintf(config.print, "Calls to index mapping: %llu\n",
+            context->env->calls);
     /* verify the results */
     {
 #ifdef WITH_FP

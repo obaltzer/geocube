@@ -10,15 +10,16 @@
 
 #define BLOCK_SIZE 4096
 
-struct fp_norm_context* fp_create_norm_context(int dimz, int dimf,
+struct fp_norm_context* fp_create_norm_context(struct sort_config* config,
+                                               int dimz, int dimf,
                                                int base_order)
 {
     size_t i;
     struct fp_norm_context* c = 
         (struct fp_norm_context*)malloc(sizeof(struct fp_norm_context));
     assert(c != NULL);
-    c->mc = fp_create_context(dimz, dimf, base_order);
-    c->zc = fp_create_context(dimz + dimf, 0, base_order);
+    c->mc = fp_create_context(config, dimz, dimf, base_order);
+    c->zc = fp_create_context(config, dimz + dimf, 0, base_order);
     c->map_size = (size_t*)malloc(sizeof(size_t) * dimf);
     c->map = (fpf_t**)malloc(sizeof(fpf_t*) * dimf);
     for(i = 0; i < dimf; i++)

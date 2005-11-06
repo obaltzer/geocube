@@ -55,10 +55,9 @@ int fp_compute_order(const struct fp_context* context,
 
 int fp_find_order_constant(const struct fp_context* context, 
                            const void* r1, const void* r2,
-                           int order)
+                           int order,
+                           fpz_t* index1, fpz_t* index2)
 {
-    fpz_t* index1 = (fpz_t*)(r1 + sizeof(int));
-    fpz_t* index2 = (fpz_t*)(r2 + sizeof(int));
     int new_order = order;
     
     /* If the order is uninitialized compute the Hilbert indices of the
@@ -108,11 +107,9 @@ int fp_find_order_constant(const struct fp_context* context,
 
 int fp_find_order_iterative(const struct fp_context* context, 
                             const void* r1, const void* r2,
-                            int order)
+                            int order,
+                            fpz_t* index1, fpz_t* index2)
 {
-    fpz_t* index1 = (fpz_t*)(r1 + sizeof(int));
-    fpz_t* index2 = (fpz_t*)(r2 + sizeof(int));
-   
     /* now that we know the both orders are the same we can compare both
      * records indices, if the order is -1 the indices are uninitialized
      * and we have to recompute in any case */
@@ -139,13 +136,25 @@ int fp_compare(const void* c, const void* r1, const void* r2)
 {
     struct fp_context* context = (struct fp_context*)c;
     int i;
-    fpz_t* index1;
-    fpz_t* index2;
     int* order1;
     int* order2;
     int order;
     int done = 0;
-
+    fpz_t i1 = 0;
+    fpz_t i2 = 0;
+    fpz_t* index1;
+    fpz_t* index2;
+    if(context->config->index == KEEP)
+    {
+        index1 = (fpz_t*)(r1 + sizeof(int));
+        index2 = (fpz_t*)(r2 + sizeof(int));
+    }
+    else
+    {
+        index1 = &i1;
+        index2 = &i2;
+    }
+ 
     /* return equality of both pointers point to the same record */
     if(r1 == r2)
         return 0;
@@ -165,8 +174,6 @@ int fp_compare(const void* c, const void* r1, const void* r2)
         return 0;
     
     /* get the pointers to the current indices of the records */
-    index1 = (fpz_t*)(r1 + sizeof(int));
-    index2 = (fpz_t*)(r2 + sizeof(int));
     order1 = (int*)(r1);
     order2 = (int*)(r2);
     
@@ -190,6 +197,17 @@ int fp_compare(const void* c, const void* r1, const void* r2)
                 (fpz_t*)(r1 + context->coordsz_off), 
                 (fpf_t*)(r1 + context->coordsf_off), 
                 index1);
+        
+        if(context->config->index == FORGET)
+        {   
+            /* if the index is not stored in the record, it has the be
+             * recomputed every time */
+            fpm_c2i(context->env, *order2, 
+                    (fpz_t*)(r2 + context->coordsz_off),  
+                    (fpf_t*)(r2 + context->coordsf_off), 
+                    index2);
+        }
+        
         order = *order1 = *order2;
     }
     else if(*order1 > *order2)
@@ -203,21 +221,47 @@ int fp_compare(const void* c, const void* r1, const void* r2)
                 (fpz_t*)(r2 + context->coordsz_off),  
                 (fpf_t*)(r2 + context->coordsf_off), 
                 index2);
+        
+        if(context->config->index == FORGET)
+        {   
+            /* if the index is not stored in the record, it has the be
+             * recomputed every time */
+            fpm_c2i(context->env, *order1, 
+                    (fpz_t*)(r1 + context->coordsz_off),  
+                    (fpf_t*)(r1 + context->coordsf_off), 
+                    index1);
+        }
+            
         order = *order2 = *order1;
     }
     else
+    {
         order = *order1 = *order2;
+        if(context->config->index == FORGET && order != -1)
+        {
+            /* if the index is not stored in the record, it has the be
+             * recomputed every time */
+            fpm_c2i(context->env, *order1, 
+                    (fpz_t*)(r1 + context->coordsz_off),  
+                    (fpf_t*)(r1 + context->coordsf_off), 
+                    index1);
+            fpm_c2i(context->env, *order2, 
+                    (fpz_t*)(r2 + context->coordsz_off),  
+                    (fpf_t*)(r2 + context->coordsf_off), 
+                    index2);
+        }
+    }
 
     if(order == -1 || *index1 == *index2)
-        order = context->find_order(context, r1, r2, order);
+        order = context->find_order(context, r1, r2, order, index1, index2);
     
     if(*index1 == *index2)
     {
-        fprintf(stderr, "Identical indices:\n");
-        print_record_mapped(stderr, context, r1, order);
-        fprintf(stderr, "\n");
-        print_record_mapped(stderr, context, r2, order);
-        fprintf(stderr, "\n");
+        fprintf(context->config->print, "Identical indices:\n");
+        print_record_mapped(context->config->print, context, r1, order);
+        fprintf(context->config->print, "\n");
+        print_record_mapped(context->config->print, context, r2, order);
+        fprintf(context->config->print, "\n");
     }
     assert(*index1 != *index2);
         
@@ -225,12 +269,13 @@ int fp_compare(const void* c, const void* r1, const void* r2)
      * number of dimensions */
     if(order > context->order_limit)
     {
-        fprintf(stderr, "Indices: %llu : %llu\n", *index1, *index2);
-        fprintf(stderr, "Order limit exceeded for: ");
-        print_record_mapped(stderr, context, r1, order - 1);
-        fprintf(stderr, " and ");
-        print_record_mapped(stderr, context, r2, order - 1);
-        fprintf(stderr, "\n");
+        fprintf(context->config->print, "Indices: %llu : %llu\n", 
+                *index1, *index2);
+        fprintf(context->config->print, "Order limit exceeded for: ");
+        print_record_mapped(context->config->print, context, r1, order - 1);
+        fprintf(context->config->print, " and ");
+        print_record_mapped(context->config->print, context, r2, order - 1);
+        fprintf(context->config->print, "\n");
         abort();
     }
     /* set the new maximum order of we have one */
@@ -309,7 +354,8 @@ void fp_im_sort(struct fp_context* context, void* input,  size_t n,
     *output = input;
 }
 
-struct fp_context* fp_create_context(int dimz, int dimf, int base_order)
+struct fp_context* fp_create_context(struct sort_config* config, 
+                                     int dimz, int dimf, int base_order)
 {
     struct fp_context* c = 
         (struct fp_context*)malloc(sizeof(struct fp_context));
@@ -318,6 +364,8 @@ struct fp_context* fp_create_context(int dimz, int dimf, int base_order)
     {
         /* create a new mixed dimensions type */
         c->env = fpm_create_env(dimz, dimf, base_order);
+        /* set the configuration */
+        c->config = config;
        
         c->cards = (size_t*)malloc(dimz * sizeof(size_t));
         /* The format of a record is as follows:
@@ -327,13 +375,24 @@ struct fp_context* fp_create_context(int dimz, int dimf, int base_order)
          * dimz * fpz_t     : discrete space dimensions
          * dimf * fpf_t     : continuous space dimensions
          */
-        c->record_size = sizeof(int) + sizeof(fpz_t) 
-                            + dimz * sizeof(fpz_t) 
-                            + dimf * sizeof(fpf_t);
-        c->order_off = 0;
-        c->coordsz_off = sizeof(int) + sizeof(fpz_t);
-        c->coordsf_off = sizeof(int) + sizeof(fpz_t)
-                            + dimz * sizeof(fpz_t);
+        if(config->index == KEEP)
+        {
+            c->record_size = sizeof(int) + sizeof(fpz_t) 
+                                + dimz * sizeof(fpz_t) 
+                                + dimf * sizeof(fpf_t);
+            c->order_off = 0;
+            c->coordsz_off = sizeof(int) + sizeof(fpz_t);
+            c->coordsf_off = sizeof(int) + sizeof(fpz_t)
+                                + dimz * sizeof(fpz_t);
+        }
+        else if(config->index == FORGET)
+        {
+            c->record_size = sizeof(int) + dimz * sizeof(fpz_t) 
+                                + dimf * sizeof(fpf_t);
+            c->order_off = 0;
+            c->coordsz_off = sizeof(int);
+            c->coordsf_off = sizeof(int) + dimz * sizeof(fpz_t);
+        }
         
         /* compute the memory size of a bounding box 
          * consisting of 2 points */
@@ -358,6 +417,11 @@ struct fp_context* fp_create_context(int dimz, int dimf, int base_order)
         /* Profiler initialize */
         c->build_tree_calls = 0;
         c->n_tree_nodes = 0;
+        
+        if(config->find_order == ITERATIVE)
+            c->find_order = fp_find_order_iterative;
+        else if(config->find_order == CONSTANT)
+            c->find_order = fp_find_order_constant;
     }
     return c;
 }

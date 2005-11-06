@@ -8,7 +8,21 @@
 #ifndef __SORT_H
 #define __SORT_H
 
+#include <stdio.h>
+
 #include "hilbert.h"
+
+struct sort_config
+{
+    int verbose;
+    int normalize;
+    int denormalize;
+    enum { CONSTANT, ITERATIVE } find_order;
+    enum { KEEP, FORGET } index;
+    FILE* infile;
+    FILE* outfile;
+    FILE* print;
+};
 
 struct fp_context
 {
@@ -27,24 +41,27 @@ struct fp_context
     int start_order;
     int max_order;
     int order_limit;
-
+    struct sort_config* config;
+    
     int (*find_order)(const struct fp_context*,
-                      const void*, const void*, int);
+                      const void*, const void*, int,
+                      fpz_t*, fpz_t*);
 
     /* profiling code */
     unsigned long long int build_tree_calls;
     unsigned int n_tree_nodes;
 };
 
-struct fp_context* fp_create_context(int dimz, int dimf, int base_order);
+struct fp_context* fp_create_context(struct sort_config* config,
+                                     int dimz, int dimf, int base_order);
 void fp_destroy_context(struct fp_context* context);
 void fp_im_sort(struct fp_context* context, void* input, size_t n, 
                 void** output);
 int fp_find_order_iterative(const struct fp_context* context, 
                             const void* r1, const void* r2,
-                            int order);
+                            int order, fpz_t* index1, fpz_t* index2);
 int fp_find_order_constant(const struct fp_context* context, 
                            const void* r1, const void* r2,
-                           int order);
+                           int order, fpz_t* index1, fpz_t* index2);
 
 #endif

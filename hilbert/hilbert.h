@@ -41,6 +41,7 @@ struct fpz_env
 struct fpz_env* fpz_create_env(int dims);
 void fpz_destroy_env(struct fpz_env* env);
 void fpz_c2i(struct fpz_env* env, int k, fpz_t coords[], fpz_t* index);
+int fpz_hcmp(struct fpz_env* env, int k, char* c1, char* c2);
 
 /**
  * Computation environment for fixed point computation but with mixed

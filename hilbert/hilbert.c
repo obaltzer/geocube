@@ -100,6 +100,73 @@ void fpz_c2i(struct fpz_env* env, int k, fpz_t coords[], fpz_t* index)
 }
 
 /**
+ * Compares two points in discrete space with respect to their location on
+ * the Hilbert curve.
+ *
+ * @param[in] env a pointer to the fixed precision operation environment
+ *                that should be used
+ * @param[in] k the order at which the Hilbert codes should be compared
+ * @param[in] c1 the coordinates of the first point at the given order
+ * @param[in] c2 the coordinates of the first point at the given order
+ * @return -1 if the first point is before the second in Hilbert order, 0
+ *         if both points are at the same index, 1 if the first points
+ *         comes after the second in Hilbert order
+ */
+int fpz_hcmp(struct fpz_env* env, int k, char* c1, char* c2)
+{
+    /* this code has been taken from Doug Moore's implementation */
+    fpz_t const one = 1;
+    int y, b, d;
+    int rotation = 0;
+    fpz_t reflection = 0;
+    fpz_t index = 0;
+
+    for(y = 0; y < sizeof(fpz_t); ++y)
+    {
+        for(b = 8; b >= 0; b--)
+        {
+            fpz_t bits = reflection;
+            fpz_t bts2 = bits;
+            fpz_t reflection2 = 0;
+            reflection = 0;
+            for(d = 0; d < env->dims; d++)
+            {
+                reflection |= 
+                    ((((char*)c1)[y + d * sizeof(fpz_t)] >> b) & 1) << d;
+                reflection2 |=
+                    ((((char*)c2)[y + d * sizeof(fpz_t)] >> b) & 1) << d;
+            }
+            bits ^= reflection;
+            /* expanded rotationRight macro */ 
+            bits = ((bits >> rotation) | (bits << (env->dims - rotation))) 
+                    & ((1 << env->dims) - 1);
+            if(reflection != reflection2)
+            {
+                bts2 ^= reflection2;
+                bts2 = ((bts2 >> rotation) | (bts2 << (env->dims - rotation))) 
+                        & ((1 << env->dims) - 1);
+                for(d = 1; d < env->dims; d <<= 1)
+                {
+                    index ^= index >> d;
+                    bits ^= bits >> d;
+                    bts2 ^= bts2 >> d;
+                }
+                return ((index ^ b) & 1) == (bits < bts2) ? -1 : 1;
+            }
+            index ^= bits;
+            reflection ^= one << rotation;
+            /* expansion of adjust rotation macro */
+            bits &= -bits & ((1 << (env->dims - 1)) - 1);
+            while(bits)
+                bits >>= 1, ++rotation;
+            if(++rotation >= env->dims)
+                rotation -= env->dims;
+        }
+    }
+    return 0;
+}
+
+/**
  * Creates a new computation environment to perform fixed precision
  * calculation on records with discrete and continuous space dimensions.
  * 

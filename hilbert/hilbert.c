@@ -1,6 +1,6 @@
 #include "hilbert.h"
 
-#include <malloc.h>
+#include <stdlib.h>
 #include <string.h>
 
 #ifndef WITHOUT_FP
@@ -189,10 +189,13 @@ struct fpm_env* fpm_create_env(int dimz, int dimf, int base_order)
         /* Only if there are continuous space dimensions defined we need to
          * have a working array. Otherwise we can just use the one for the
          * discrete space dimensions. */
-        if(1)
-            env->coords = (fpz_t*)malloc(sizeof(fpz_t) * (dimz + dimf));
+        if(dimf)
+        {
+            env->coords1 = (fpz_t*)malloc(sizeof(fpz_t) * (dimz + dimf));
+            env->coords2 = (fpz_t*)malloc(sizeof(fpz_t) * (dimz + dimf));
+        }
         else
-            env->coords = NULL;
+            env->coords1 = env->coords2 = NULL;
     }
     return env;
 }
@@ -208,8 +211,10 @@ void fpm_destroy_env(struct fpm_env* env)
     if(env)
     {
         fpz_destroy_env(env->envz);
-        if(env->coords)
-            free(env->coords);
+        if(env->coords1)
+            free(env->coords1);
+        if(env->coords2)
+            free(env->coords2);
         free(env);
     }
 }
@@ -242,24 +247,83 @@ void fpm_c2i(struct fpm_env* env, int k, fpz_t coordsz[], fpf_t coordsf[],
         
         for(i = 0; i < env->dimz; i++)
             /* compensate for discrete dimension skew */
-            env->coords[i] = coordsz[i] << (k - env->base_order);
+            env->coords1[i] = coordsz[i] << (k - env->base_order);
             
         for(i = 0; i < env->dimf; i++)
         {
             /* convert continuous into discrete space, while handling
              * closed intervals gracefully */
-            env->coords[i + env->dimz] = 
+            env->coords1[i + env->dimz] = 
                 (fpz_t)(coordsf[i] * (fpf_t)bits) == bits 
                     ? bits - 1
                     : (fpz_t)(coordsf[i] * (fpf_t)bits);
         }
         
-        fpz_c2i(env->envz, k, env->coords, index);
+        fpz_c2i(env->envz, k, env->coords1, index);
     }
     else
         fpz_c2i(env->envz, k, coordsz, index);
 }
     
+/**
+ * Compares two points with respect to their position on the Hilbert curve
+ * in multi-dimensional space with mixed discrete and continuous space
+ * dimensions. 
+ *
+ * @param[in] env the computation environment to use
+ * @param[in] k the order of the Hilbert curve to be used to compare the
+ *              indices
+ * @param[in] cz1 the array of coordinates of point 1 in the discrete space
+ * @param[in] cf1 array of normalized coordinates of point 1 in continuous
+ *                space 
+ * @param[in] cz2 the array of coordinates of point 2 in the discrete space
+ * @param[in] cf2 array of normalized coordinates of point 2 in continuous
+ *                space
+ * @return -1 if the first point lies before the second point, 0 if both
+ *         points share the same index, 1 if the second point lies before
+ *         the first point
+ */
+int fpm_hcmp(struct fpm_env* env, int k, fpz_t cz1[], fpf_t cf1[],
+              fpz_t cz2[], fpf_t cf2[])
+{
+    env->calls++;
+    /* Only if there are continuous space dimensions defined we need to
+     * perform extra computation to convert them into discrete space. */
+    /* if(env->dimf) */
+    if(env->dimf)
+    {
+        int i = 0;
+        fpz_t bits = 1;
+
+        bits = bits << k;
+        
+        for(i = 0; i < env->dimz; i++)
+        {
+            /* compensate for discrete dimension skew */
+            env->coords1[i] = cz1[i] << (k - env->base_order);
+            env->coords2[i] = cz2[i] << (k - env->base_order);
+        }
+        
+        for(i = 0; i < env->dimf; i++)
+        {
+            /* convert continuous into discrete space, while handling
+             * closed intervals gracefully */
+            env->coords1[i + env->dimz] = 
+                (fpz_t)(cf1[i] * (fpf_t)bits) == bits 
+                    ? bits - 1
+                    : (fpz_t)(cf1[i] * (fpf_t)bits);
+            env->coords2[i + env->dimz] = 
+                (fpz_t)(cf2[i] * (fpf_t)bits) == bits 
+                    ? bits - 1
+                    : (fpz_t)(cf2[i] * (fpf_t)bits);
+        }
+        
+        return fpz_hcmp(env->envz, k, (char*)env->coords1, 
+                        (char*)env->coords2);
+    }
+    else
+        return fpz_hcmp(env->envz, k, (char*)cz1, (char*)cz2);
+}
 #endif
 
 #ifndef WITHOUT_MP

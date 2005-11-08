@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef WITH_FP
 #include <gmp.h>
+#endif
 #include <time.h>
 #include <assert.h>
 

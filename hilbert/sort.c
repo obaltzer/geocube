@@ -16,7 +16,10 @@ int fp_compute_order(const struct fp_context* context,
     int i;
     fpz_t intervals;
     int o;
-    
+   
+    if(context->env->dimf == 0)
+        return context->start_order;
+
     fpf_t* r1f = (fpf_t*)(r1 + context->coordsf_off);
     fpf_t* r2f = (fpf_t*)(r2 + context->coordsf_off);
     fpf_t diff;
@@ -55,14 +58,14 @@ int fp_compute_order(const struct fp_context* context,
 
 int fp_find_order_constant(const struct fp_context* context, 
                            const void* r1, const void* r2,
-                           int order,
+                           int* order,
                            fpz_t* index1, fpz_t* index2)
 {
-    int new_order = order;
+    int new_order = *order;
     
     /* If the order is uninitialized compute the Hilbert indices of the
      * records at the minimum order. */
-    if(order == -1)
+    if(*order == -1)
     {
         new_order = fp_compute_order(context, r1, r2);
         /* if the new order is smaller than the minimum order, use the
@@ -86,7 +89,7 @@ int fp_find_order_constant(const struct fp_context* context,
     else if(*index1 == *index2)
     {
         new_order = fp_compute_order(context, r1, r2);
-        if(new_order > order)
+        if(new_order > *order)
         {
             /* make sure we do not exceed the maximum order */
             assert(new_order <= context->order_limit);
@@ -100,39 +103,87 @@ int fp_find_order_constant(const struct fp_context* context,
                     index2);
         }
         else
-            new_order = order;
+            new_order = *order;
     }
-    return new_order;
+    *order = new_order;
+    return *index1 < *index2 ? -1 : *index1 > *index2 ? 1 : 0;
 }
 
 int fp_find_order_iterative(const struct fp_context* context, 
                             const void* r1, const void* r2,
-                            int order,
+                            int* order,
                             fpz_t* index1, fpz_t* index2)
 {
     /* now that we know the both orders are the same we can compare both
      * records indices, if the order is -1 the indices are uninitialized
      * and we have to recompute in any case */
-    while(order == -1 
-        || (*index1 == *index2 && order <= context->order_limit))
+    while(*order == -1 
+        || (*index1 == *index2 && *order <= context->order_limit))
     {
-        if(order == -1)
-            order = context->start_order;
+        if(*order == -1)
+            *order = context->start_order;
         else
-            order++;
-        fpm_c2i(context->env, order, 
+            (*order)++;
+        fpm_c2i(context->env, *order, 
                 (fpz_t*)(r1 + context->coordsz_off),
                 (fpf_t*)(r1 + context->coordsf_off),
                 index1);
-        fpm_c2i(context->env, order, 
+        fpm_c2i(context->env, *order, 
                 (fpz_t*)(r2 + context->coordsz_off),
                 (fpf_t*)(r2 + context->coordsf_off),
                 index2);
     }
-    return order;
+    return *index1 < *index2 ? -1 : *index1 > *index2 ? 1 : 0;
 }
 
-int fp_compare(const void* c, const void* r1, const void* r2)
+int fp_find_order_compare(const struct fp_context* context, 
+                          const void* r1, const void* r2,
+                          int* order,
+                          fpz_t* index1, fpz_t* index2)
+{
+    int res = 0;
+    while((res = fpm_hcmp(context->env, *order, 
+                (fpz_t*)(r1 + context->coordsz_off),
+                (fpf_t*)(r1 + context->coordsf_off),
+                (fpz_t*)(r2 + context->coordsz_off),
+                (fpf_t*)(r2 + context->coordsf_off))) == 0)
+        *order++;
+    if(*order % 2 == 0)
+        return res;
+    else
+        return res == -1 ? 1 : res == 1 ? -1 : 0;
+}
+
+int fp_xyz_compare(const void* c, const void* r1, const void* r2)
+{
+    struct fp_context* context = (struct fp_context*)c;
+    int i;
+   
+    context->compare_calls++;
+    
+    if(r1 == r2)
+        return 0;
+
+    /* check if the two records have equal values */
+    for(i = 0; i < context->env->dimz; i++)
+        if(((fpz_t*)(r1 + context->coordsz_off))[i] 
+                < ((fpz_t*)(r2 + context->coordsz_off))[i])
+            return -1;
+        else if(((fpz_t*)(r1 + context->coordsz_off))[i] 
+                    > ((fpz_t*)(r2 + context->coordsz_off))[i])
+            return 1;
+            
+    for(i = 0; i < context->env->dimf; i++)
+        if(((fpf_t*)(r1 + context->coordsf_off))[i] 
+                < ((fpf_t*)(r2 + context->coordsf_off))[i])
+            return -1;
+        else if(((fpf_t*)(r1 + context->coordsf_off))[i] 
+                    > ((fpf_t*)(r2 + context->coordsf_off))[i])
+            return 1;
+    return 0;
+}
+
+int fp_hilbert_index_compare(const void* c, const void* r1, const void* r2)
 {
     struct fp_context* context = (struct fp_context*)c;
     int i;
@@ -140,19 +191,28 @@ int fp_compare(const void* c, const void* r1, const void* r2)
     int* order2;
     int order;
     int done = 0;
+    int res;
     fpz_t i1 = 0;
     fpz_t i2 = 0;
     fpz_t* index1;
     fpz_t* index2;
-    if(context->config->index == KEEP)
-    {
-        index1 = (fpz_t*)(r1 + sizeof(int));
-        index2 = (fpz_t*)(r2 + sizeof(int));
-    }
+    
+    context->compare_calls++;
+    
+    if(context->config->find_order == COMPARE)
+        index2 = index1 = NULL;
     else
     {
-        index1 = &i1;
-        index2 = &i2;
+        if(context->config->index == KEEP)
+        {
+            index1 = (fpz_t*)(r1 + sizeof(int));
+            index2 = (fpz_t*)(r2 + sizeof(int));
+        }
+        else
+        {
+            index1 = &i1;
+            index2 = &i2;
+        }
     }
  
     /* return equality of both pointers point to the same record */
@@ -188,56 +248,64 @@ int fp_compare(const void* c, const void* r1, const void* r2)
     /* fist make sure that both records are computed at the same order */
     if(*order1 < *order2)
     {
-        /* If r1's order is smaller than r2's order, recompute r1's index
-         * and set its order to the one of r2. We do not have to test for
-         * order1 == -1, because we are recomputing index1 anyway and
-         * index2 cannot be uninitialized, otherwise order2 would not be
-         * larger then order1. */
-        fpm_c2i(context->env, *order2, 
-                (fpz_t*)(r1 + context->coordsz_off), 
-                (fpf_t*)(r1 + context->coordsf_off), 
-                index1);
-        
-        if(context->config->index == FORGET)
-        {   
-            /* if the index is not stored in the record, it has the be
-             * recomputed every time */
+        /* only compute indices if we do not use the compare function */
+        if(context->config->find_order != COMPARE)
+        {
+            /* If r1's order is smaller than r2's order, recompute r1's
+             * index and set its order to the one of r2. We do not have to
+             * test for order1 == -1, because we are recomputing index1
+             * anyway and index2 cannot be uninitialized, otherwise order2
+             * would not be larger then order1. */
             fpm_c2i(context->env, *order2, 
-                    (fpz_t*)(r2 + context->coordsz_off),  
-                    (fpf_t*)(r2 + context->coordsf_off), 
-                    index2);
+                    (fpz_t*)(r1 + context->coordsz_off), 
+                    (fpf_t*)(r1 + context->coordsf_off), 
+                    index1);
+            
+            if(context->config->index == FORGET)
+            {   
+                /* if the index is not stored in the record, it has the be
+                 * recomputed every time */
+                fpm_c2i(context->env, *order2, 
+                        (fpz_t*)(r2 + context->coordsz_off),  
+                        (fpf_t*)(r2 + context->coordsf_off), 
+                        index2);
+            }
         }
-        
         order = *order1 = *order2;
     }
     else if(*order1 > *order2)
     {
-        /* If r2's order is smaller than r1's order, recompute r2's index
-         * and set its order to the one of r1. We do not have to test for
-         * order2 == -1, because we are recomputing index2 anyway and
-         * index1 cannot be uninitialized, otherwise order1 would not be
-         * larger then order2. */
-        fpm_c2i(context->env, *order1, 
-                (fpz_t*)(r2 + context->coordsz_off),  
-                (fpf_t*)(r2 + context->coordsf_off), 
-                index2);
-        
-        if(context->config->index == FORGET)
-        {   
-            /* if the index is not stored in the record, it has the be
-             * recomputed every time */
+        /* only compute indices if we do not use the compare function */
+        if(context->config->find_order != COMPARE)
+        {
+            /* If r2's order is smaller than r1's order, recompute r2's index
+             * and set its order to the one of r1. We do not have to test for
+             * order2 == -1, because we are recomputing index2 anyway and
+             * index1 cannot be uninitialized, otherwise order1 would not be
+             * larger then order2. */
             fpm_c2i(context->env, *order1, 
-                    (fpz_t*)(r1 + context->coordsz_off),  
-                    (fpf_t*)(r1 + context->coordsf_off), 
-                    index1);
-        }
+                    (fpz_t*)(r2 + context->coordsz_off),  
+                    (fpf_t*)(r2 + context->coordsf_off), 
+                    index2);
             
+            if(context->config->index == FORGET)
+            {   
+                /* if the index is not stored in the record, it has the be
+                 * recomputed every time */
+                fpm_c2i(context->env, *order1, 
+                        (fpz_t*)(r1 + context->coordsz_off),  
+                        (fpf_t*)(r1 + context->coordsf_off), 
+                        index1);
+            }
+        }
+                
         order = *order2 = *order1;
     }
     else
     {
         order = *order1 = *order2;
-        if(context->config->index == FORGET && order != -1)
+        if(context->config->find_order != COMPARE
+                && context->config->index == FORGET && order != -1)
         {
             /* if the index is not stored in the record, it has the be
              * recomputed every time */
@@ -251,11 +319,14 @@ int fp_compare(const void* c, const void* r1, const void* r2)
                     index2);
         }
     }
-
-    if(order == -1 || *index1 == *index2)
-        order = context->find_order(context, r1, r2, order, index1, index2);
-    
-    if(*index1 == *index2)
+    if(order != -1 && context->config->find_order != COMPARE)
+        res = *index1 < *index2 ? -1 : *index1 > *index2 ? 1 : 0;
+        
+    if(order == -1 || context->config->find_order == COMPARE 
+            || (context->config->find_order != COMPARE && res == 0))
+        res = context->find_order(context, r1, r2, 
+                                  &order, index1, index2);
+    if(res == 0)
     {
         fprintf(context->config->print, "Identical indices:\n");
         print_record_mapped(context->config->print, context, r1, order);
@@ -263,7 +334,7 @@ int fp_compare(const void* c, const void* r1, const void* r2)
         print_record_mapped(context->config->print, context, r2, order);
         fprintf(context->config->print, "\n");
     }
-    assert(*index1 != *index2);
+    assert(res != 0);
         
     /* the order limit is the bit length of index datatype divided by the
      * number of dimensions */
@@ -284,14 +355,10 @@ int fp_compare(const void* c, const void* r1, const void* r2)
         
     *order1 = *order2 = order;
 
-    if(*index1 < *index2)
-        return -1;
-    else if(*index1 > *index2)
-        return 1;
-    return 0;
+    return res;
 }
 
-void mergesort(const void* context, void* pbase,
+void msort(const void* context, void* pbase,
                 size_t total_elems, size_t size,
                 int (*cmp)(const void*, const void*, const void*))
 {
@@ -306,8 +373,8 @@ void mergesort(const void* context, void* pbase,
         memcpy(newBuf2, pbase + (size * (total_elems / 2)),
                 size * ((total_elems + 1) / 2));
         
-        mergesort(context, newBuf1, total_elems / 2, size, cmp);
-        mergesort(context, newBuf2, (total_elems + 1) / 2, size, cmp);
+        msort(context, newBuf1, total_elems / 2, size, cmp);
+        msort(context, newBuf2, (total_elems + 1) / 2, size, cmp);
 
         while(i < total_elems / 2 && j < (total_elems + 1) / 2)
             if(cmp(context, newBuf1 + (size * i), newBuf2 + (size * j)) == -1)
@@ -343,14 +410,15 @@ void mergesort(const void* context, void* pbase,
     }
     return;
 }
-        
-    
+
 void fp_im_sort(struct fp_context* context, void* input,  size_t n,
                 void** output)
 {
     /* output array has to be NULL, because we do everything in place */
     assert(*output == NULL);
-    quicksort(context, input, n, context->record_size, fp_compare);
+    context->compare_calls = 0;
+    quicksort(context, input, n, context->record_size, 
+              context->compare_func);
     *output = input;
 }
 
@@ -417,11 +485,17 @@ struct fp_context* fp_create_context(struct sort_config* config,
         /* Profiler initialize */
         c->build_tree_calls = 0;
         c->n_tree_nodes = 0;
-        
-        if(config->find_order == ITERATIVE)
+        if(config->find_order == COMPARE)
+            c->find_order = fp_find_order_compare;
+        else if(config->find_order == ITERATIVE)
             c->find_order = fp_find_order_iterative;
         else if(config->find_order == CONSTANT)
             c->find_order = fp_find_order_constant;
+
+        if(config->cmp == HILBERT)
+            c->compare_func = fp_hilbert_index_compare;
+        else if(config->cmp == XYZ)
+            c->compare_func = fp_xyz_compare;
     }
     return c;
 }

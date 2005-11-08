@@ -17,11 +17,14 @@ struct sort_config
     int verbose;
     int normalize;
     int denormalize;
-    enum { CONSTANT, ITERATIVE } find_order;
+    int benchmark;
+    enum { CONSTANT, ITERATIVE, COMPARE } find_order;
     enum { KEEP, FORGET } index;
+    enum { HILBERT, XYZ } cmp;
     FILE* infile;
     FILE* outfile;
     FILE* print;
+    char* filename;
 };
 
 struct fp_context
@@ -44,11 +47,13 @@ struct fp_context
     struct sort_config* config;
     
     int (*find_order)(const struct fp_context*,
-                      const void*, const void*, int,
+                      const void*, const void*, int*,
                       fpz_t*, fpz_t*);
+    int (*compare_func)(const void* c, const void* r1, const void* r2);
 
     /* profiling code */
     unsigned long long int build_tree_calls;
+    unsigned long long int compare_calls;
     unsigned int n_tree_nodes;
 };
 
@@ -59,9 +64,9 @@ void fp_im_sort(struct fp_context* context, void* input, size_t n,
                 void** output);
 int fp_find_order_iterative(const struct fp_context* context, 
                             const void* r1, const void* r2,
-                            int order, fpz_t* index1, fpz_t* index2);
+                            int* order, fpz_t* index1, fpz_t* index2);
 int fp_find_order_constant(const struct fp_context* context, 
                            const void* r1, const void* r2,
-                           int order, fpz_t* index1, fpz_t* index2);
+                           int* order, fpz_t* index1, fpz_t* index2);
 
 #endif

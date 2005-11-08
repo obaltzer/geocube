@@ -1,7 +1,8 @@
-CFLAGS := -g -Wall -ansi -I. -DWITH_FP
-LDFLAGS := -lgmp -lm
+CFLAGS := -pg -funroll-all-loops -funroll-loops -O3 -Wall -ansi -I. -DWITH_FP -DWITHOUT_MP -I/usr/local/include
+LDFLAGS := -lm -L/usr/local/lib
 
-all:	test_fp	test_mp sort_test tree_test_fp
+all:	test_fp	sort_test tree_test_fp 
+# test
 
 tree_test_fp:	hilbert.o quicksort.o sort.o tree.o tree_test.c util.o
 	gcc -o tree_test_fp tree_test.c hilbert.o \
@@ -36,6 +37,16 @@ util.o:	util.c sort.h
 norm.o:	hilbert.h sort.h quicksort.h norm.c
 	gcc -c norm.c $(CFLAGS)
 
-clean:
+test:
+	@cd tests ; \
+	$(MAKE)
+
+test_clean:
+	cd tests ; \
+	$(MAKE) clean
+
+clean-dir:	
 	rm -f test_fp test_mp hilbert.o sort.o quicksort.o \
 		tree.o tree_test_fp util.o norm.o
+
+clean:	clean-dir test_clean

@@ -23,18 +23,20 @@ void configure(int argc, char** argv, struct sort_config* config)
     o -- output file
     v -- enable verbose output
     f -- find order algorithm (constant | iterative)
-    c -- how to deal with Hilbert codes (keep | forget)
+    s -- Hilbert codes with record (yes/1 | no/0)
     i -- input file name or "-" for stdin
     */
-    char* options = "o:vnf:c:i:d";
+    char* options = "o:vnf:s:i:dbc:";
     static struct option long_options[] = {
         {"output-file", 1, 0, 'o'},
         {"verbose",     0, 0, 'v'},
         {"normalize",   0, 0, 'n'},
         {"find-order",  1, 0, 'f'},
-        {"code",        1, 0, 'c'},
+        {"store-code",  1, 0, 's'},
         {"input-file",  1, 0, 'i'},
         {"denormalize", 0, 0, 'd'},
+        {"benchmark",   0, 0, 'b'},
+        {"compare-function", 1, 0, 'c'},
         {0,             0, 0, 0}
     };
     int option_index = 0;
@@ -54,6 +56,13 @@ void configure(int argc, char** argv, struct sort_config* config)
                 }
                 break;
                 
+            case 'b':
+                config->benchmark = 1;
+                if(config->outfile == NULL)
+                    config->outfile = stdout;
+                config->print = stderr;
+                break;
+                
             case 'o':
                 if(!strcmp(optarg, "-"))
                 {
@@ -65,6 +74,7 @@ void configure(int argc, char** argv, struct sort_config* config)
                     perror("Unable to open output file: ");
                     exit(4);
                 }
+                config->filename = optarg;
                 break;
             
             case 'v':
@@ -72,7 +82,9 @@ void configure(int argc, char** argv, struct sort_config* config)
                 break;
             
             case 'f':
-                if(!strcmp(optarg, "constant"))
+                if(!strcmp(optarg, "compare"))
+                    config->find_order = COMPARE;
+                else if(!strcmp(optarg, "constant"))
                     config->find_order = CONSTANT;
                 else if(!strcmp(optarg, "iterative"))
                     config->find_order = ITERATIVE;
@@ -83,11 +95,24 @@ void configure(int argc, char** argv, struct sort_config* config)
                     exit(100);
                 }
                 break;
-
+            
             case 'c':
-                if(!strcmp(optarg, "keep"))
+                if(!strcmp(optarg, "hilbert"))
+                    config->cmp = HILBERT;
+                else if(!strcmp(optarg, "xyz"))
+                    config->cmp = XYZ;
+                else
+                {
+                    fprintf(stderr, "Unknown comparison algorithm: %s\n",
+                            optarg);
+                    exit(100);
+                }
+                break;
+
+            case 's':
+                if(!strcmp(optarg, "yes") || !strcmp(optarg, "1"))
                     config->index = KEEP;
-                else if(!strcmp(optarg, "forget"))
+                else if(!strcmp(optarg, "no") || !strcmp(optarg, "0"))
                     config->index = FORGET;
                 else
                 {
@@ -104,7 +129,7 @@ void configure(int argc, char** argv, struct sort_config* config)
             case 'd':
                 config->denormalize = 1;
                 break; 
-            
+
             default:
                 fprintf(stderr, "Unkown command line option: %s\n",
                         argv[optind]);
@@ -212,7 +237,7 @@ void read_records(struct sort_config* config,
         if(config->verbose)
         {
             print_record(config->print, context, record_base);
-            printf("\n");
+            fprintf(config->print, "\n");
         }
     }
     stop_timing(&loading_time);
@@ -224,12 +249,13 @@ int main(int argc, char** args)
 {
     struct metadata* meta;
     struct sort_config config
-        = { 0, 0, 0, ITERATIVE, KEEP, stdin, NULL, stdout };
+        = { 0, 0, 0, 0, ITERATIVE, KEEP, HILBERT, stdin, NULL, stdout, NULL };
     int start_order;
     void* records;
     void* result = NULL;
     void* record_base;
     struct runtime sorting_time;
+    struct runtime normalization;
 #ifdef WITH_FP
     struct fp_context* context;
     struct fp_norm_context* norm;
@@ -260,7 +286,9 @@ int main(int argc, char** args)
         records = malloc(meta->n * context->record_size);
 
 #ifdef WITH_FP
+        start_timing(&normalization);
         fp_normalize(norm, orig_records, meta->n, records);
+        stop_timing(&normalization);
 #elif WITH_MP
 #endif
         free(orig_records);
@@ -272,6 +300,16 @@ int main(int argc, char** args)
                                     start_order);
         /* allocate memory for the records */
         records = malloc(meta->n * context->record_size);
+        if(!records)
+        {
+            fprintf(config.print, "Not enough memory!\n");
+            fclose(config.outfile);
+            if(config.filename)
+            {
+                remove(config.filename);
+            }
+            exit(123);
+        }
         read_records(&config, meta, context, records);
     }
     
@@ -284,11 +322,6 @@ int main(int argc, char** args)
      
     fprintf(config.print, "Start sorting...\n");
     
-    if(config.find_order == ITERATIVE)
-        context->find_order = fp_find_order_iterative;
-    else if(config.find_order == CONSTANT)
-        context->find_order = fp_find_order_constant;
-    
     start_timing(&sorting_time);
     fp_im_sort(context, records, meta->n, &result);
     stop_timing(&sorting_time);
@@ -298,7 +331,23 @@ int main(int argc, char** args)
     fprintf(config.print, "Maximum order is: %d\n", context->max_order);
     fprintf(config.print, "Calls to index mapping: %llu\n",
             context->env->calls);
+    fprintf(config.print, "Calls to compare function: %llu\n",
+            context->compare_calls);
+    if(config.benchmark == 1)
+    {
+        if(config.normalize)
+            fprintf(config.outfile, "%f\t%f\t%llu\n",
+                (float)get_runtime(sorting_time), 
+                (float)get_runtime(normalization),
+                context->env->calls);
+        else
+            fprintf(config.outfile, "%f\t%f\t%llu\n",
+                (float)get_runtime(sorting_time), 0.0f,
+                context->env->calls);
+    }
+        
     /* verify the results */
+#if 0
     {
 #ifdef WITH_FP
         fpz_t index;
@@ -314,7 +363,8 @@ int main(int argc, char** args)
                     (fpf_t*)(record_base + context->coordsf_off), &index);
             if(prev_index > index)
             {
-                printf("Failure: %llu %llu\n", index, prev_index);
+                fprintf(config.print, "Failure: %llu %llu\n", 
+                        index, prev_index);
                 abort();
             }
             prev_index = index;
@@ -322,7 +372,8 @@ int main(int argc, char** args)
 #endif
         }
     }
-    
+#endif
+
     if(config.normalize && config.denormalize)
     {
         /* reverse map records */
@@ -337,7 +388,7 @@ int main(int argc, char** args)
     }
     
     /* print out the sorted dataset */
-    if(config.outfile)
+    if(config.outfile && !config.benchmark)
     {
         int coordz;
         float coordf;

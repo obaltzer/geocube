@@ -1,15 +1,27 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import getopt
 import sys
+import os
 import random
+import signal
 
+filename = None
+
+def int_handler(signum, frame):
+    print "Caught SIGINT. Deleting output file."
+    if filename != None:
+        os.remove(filename)
+    sys.exit(123)
+        
 def usage():
     print """
     datagen.py [--dimf n] [--dimz=d1,d2,d3...] [--prec n] 
                [--number num] [filename]
     """
     
+signal.signal(signal.SIGINT, int_handler)
+
 short_opts = ""
 long_opts = ['dimf=', 'dimz=', 'number=', 'prec=']
 try:
@@ -19,6 +31,7 @@ except getopt.GetoptError:
     sys.exit(2)
 
 if len(args) != 0:
+    filename = args[0]
     f = open(args[0], 'wt')
 else:
     f = sys.stdout

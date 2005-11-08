@@ -60,7 +60,8 @@ struct fpm_env
     int dimf;
 
     /** the array which will store the discretized coordinates */
-    fpz_t* coords;
+    fpz_t* coords1;
+    fpz_t* coords2;
 
     /** the base order of the discrete space for skew compensation */
     int base_order;
@@ -73,6 +74,8 @@ struct fpm_env* fpm_create_env(int dimz, int dimf, int base_order);
 void fpm_destroy_env(struct fpm_env* env);
 void fpm_c2i(struct fpm_env* env, int k, fpz_t coordsz[], fpf_t coordsf[],
              fpz_t* index);
+int fpm_hcmp(struct fpm_env* env, int k, fpz_t cz1[], fpf_t cf1[], 
+              fpz_t cz2[], fpf_t cf2[]);
 #endif
 
 #ifndef WITHOUT_MP

@@ -69,7 +69,6 @@ int main(int argc, char** argv)
                         if(*t == ',' || *t == '\0')
                             i++;
                     }
-                    printf("dimz: %d\n", i);
                     config.dimz = i;
                     config.cards = 
                         (size_t*)malloc(sizeof(size_t) * config.dimz);

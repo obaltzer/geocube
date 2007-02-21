@@ -1,0 +1,6 @@
+project(geocube)
+find_library(MATHLIB m)
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -g -DWITH_FP -DWITHOUT_MP")
+set(CMAKE_EXE_LINKER_FLAGS ${MATHLIB})
+set(LIB_SOURCES tree_test.c hilbert.c sort.c quicksort.c tree.c util.c)
+add_executable(tree_test ${LIB_SOURCES})

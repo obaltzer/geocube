@@ -334,7 +334,7 @@ int fp_hilbert_index_compare(const void* c, const void* r1, const void* r2)
         print_record_mapped(context->config->print, context, r2, order);
         fprintf(context->config->print, "\n");
     }
-    assert(res != 0);
+    /* assert(res != 0); */
         
     /* the order limit is the bit length of index datatype divided by the
      * number of dimensions */
@@ -433,7 +433,8 @@ struct fp_context* fp_create_context(struct sort_config* config,
         /* create a new mixed dimensions type */
         c->env = fpm_create_env(dimz, dimf, base_order);
         /* set the configuration */
-        c->config = config;
+        c->config = malloc(sizeof(struct sort_config));
+        memcpy(c->config, config, sizeof(struct sort_config));
        
         c->cards = (size_t*)malloc(dimz * sizeof(size_t));
         /* The format of a record is as follows:
@@ -505,6 +506,7 @@ void fp_destroy_context(struct fp_context* context)
     if(context)
     {
         fpm_destroy_env(context->env);
+        free(context->config);
         free(context->cards);
         free(context);
     }
